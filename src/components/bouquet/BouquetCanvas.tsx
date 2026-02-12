@@ -1,7 +1,11 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useState, useEffect, useLayoutEffect } from "react";
 import { PlacedElement } from "@/lib/bouquet-store";
 import { WRAP_STYLES } from "@/lib/flowers-data";
 import { getElementImage } from "@/lib/flower-assets";
+import { getStickerSVG } from "@/lib/sticker-svgs";
+import { getFlowerSVG } from "@/lib/flower-svgs";
+import { BouquetWrap } from "./BouquetWrap";
+import { BouquetFilters } from "./BouquetFilters";
 
 interface BouquetCanvasProps {
   elements: PlacedElement[];
@@ -12,7 +16,17 @@ interface BouquetCanvasProps {
   onDeleteElement: (id: string) => void;
 }
 
-const BOUNDARY = { cx: 0.5, cy: 0.55, rx: 0.38, ry: 0.42 };
+// 400x500 Internal Coordinate Space
+const INTERNAL_WIDTH = 400;
+const INTERNAL_HEIGHT = 500;
+
+// Boundary constants relative to 400x500 space
+// Restored for taller bouquet (82% width, near full height)
+// TopY=25, BottomY=475. Center=250. Ry=225. Rx=164.
+const BOUNDARY = { cx: 200, cy: 250, rx: 164, ry: 225 };
+
+// Flowers that shouldn't be clipped (tall/sprig types)
+const NO_CLIP_IDS = ['eucalyptus', 'fern', 'monstera', 'jasmine', 'bluebell', 'lavender', 'babysbreath', 'cherry-blossom'];
 
 export const BouquetCanvas = ({
   elements,
@@ -21,30 +35,46 @@ export const BouquetCanvas = ({
   onSelectElement,
   onUpdateElement,
 }: BouquetCanvasProps) => {
-  const canvasRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
   const dragRef = useRef<{ id: string; startX: number; startY: number; elX: number; elY: number } | null>(null);
+
+  // Resize observer to maintain consistent scale
+  useLayoutEffect(() => {
+    if (!containerRef.current) return;
+    const updateScale = () => {
+      if (containerRef.current) {
+        const { width } = containerRef.current.getBoundingClientRect();
+        setScale(width / INTERNAL_WIDTH);
+      }
+    };
+
+    updateScale();
+    const observer = new ResizeObserver(updateScale);
+    observer.observe(containerRef.current);
+
+    return () => observer.disconnect();
+  }, []);
 
   const wrap = WRAP_STYLES.find(w => w.id === wrapId) || WRAP_STYLES[0];
 
   const clampToBoundary = useCallback((x: number, y: number) => {
-    if (!canvasRef.current) return { x, y };
-    const rect = canvasRef.current.getBoundingClientRect();
-    const cx = rect.width * BOUNDARY.cx;
-    const cy = rect.height * BOUNDARY.cy;
-    const rx = rect.width * BOUNDARY.rx;
-    const ry = rect.height * BOUNDARY.ry;
+    let dx = x - BOUNDARY.cx;
+    let dy = y - BOUNDARY.cy;
 
-    const dx = x - cx;
-    const dy = y - cy;
-    const dist = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
+    // 1. Vertical limit (allow sticking out top more)
+    if (dy > BOUNDARY.ry * 0.8) dy = BOUNDARY.ry * 0.8;
+    if (dy < -BOUNDARY.ry * 1.2) dy = -BOUNDARY.ry * 1.2;
 
-    if (dist <= 1.3) return { x, y }; // allow slight overflow
+    // 2. Cone shape horizontal limit (Trapezoid)
+    const yLevel = dy / BOUNDARY.ry;
+    const widthFactor = 1 - (Math.max(0, yLevel) * 0.6);
+    const currentMaxX = BOUNDARY.rx * widthFactor;
 
-    const angle = Math.atan2(dy / ry, dx / rx);
-    return {
-      x: cx + rx * 1.15 * Math.cos(angle),
-      y: cy + ry * 1.15 * Math.sin(angle),
-    };
+    if (dx < -currentMaxX) dx = -currentMaxX;
+    if (dx > currentMaxX) dx = currentMaxX;
+
+    return { x: BOUNDARY.cx + dx, y: BOUNDARY.cy + dy };
   }, []);
 
   const handlePointerDown = useCallback((e: React.PointerEvent, el: PlacedElement) => {
@@ -53,6 +83,7 @@ export const BouquetCanvas = ({
     onSelectElement(el.id);
     const target = e.currentTarget as HTMLElement;
     target.setPointerCapture(e.pointerId);
+
     dragRef.current = {
       id: el.id,
       startX: e.clientX,
@@ -64,145 +95,137 @@ export const BouquetCanvas = ({
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragRef.current) return;
-    const dx = e.clientX - dragRef.current.startX;
-    const dy = e.clientY - dragRef.current.startY;
-    const clamped = clampToBoundary(dragRef.current.elX + dx, dragRef.current.elY + dy);
+
+    const dx = (e.clientX - dragRef.current.startX) / scale;
+    const dy = (e.clientY - dragRef.current.startY) / scale;
+
+    const rawX = dragRef.current.elX + dx;
+    const rawY = dragRef.current.elY + dy;
+
+    const clamped = clampToBoundary(rawX, rawY);
     onUpdateElement(dragRef.current.id, { x: clamped.x, y: clamped.y });
-  }, [onUpdateElement, clampToBoundary]);
+  }, [scale, onUpdateElement, clampToBoundary]);
 
   const handlePointerUp = useCallback(() => {
     dragRef.current = null;
   }, []);
 
+  const sortedElements = [...elements].sort((a, b) => a.zIndex - b.zIndex);
+
   return (
     <div
-      ref={canvasRef}
-      className="w-full h-full relative overflow-hidden cursor-crosshair"
-      style={{ background: `linear-gradient(135deg, hsl(var(--background)), hsl(var(--muted)))` }}
-      onClick={() => onSelectElement(null)}
+      className="w-full h-full flex items-center justify-center overflow-hidden bg-background/5 p-4"
+      style={{
+        background: `radial-gradient(circle at center, hsl(var(--background)), hsl(var(--muted)))`,
+        touchAction: 'none'
+      }}
     >
-      {/* Wrap paper base - always visible */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        {/* Outer wrap fold */}
-        <div
-          className="absolute w-[75%] h-[80%] rounded-t-[40%] rounded-b-xl"
-          style={{
-            background: `linear-gradient(180deg, ${wrap.color}${Math.round(wrap.opacity * 200).toString(16).padStart(2, '0')}, ${wrap.color}${Math.round(wrap.opacity * 120).toString(16).padStart(2, '0')} 60%, ${wrap.color}${Math.round(wrap.opacity * 255).toString(16).padStart(2, '0')})`,
-            boxShadow: `0 8px 32px ${wrap.color}40, inset 0 -20px 40px ${wrap.color}30`,
-            top: '10%',
-          }}
-        />
-        {/* Inner wrap layer for depth */}
-        <div
-          className="absolute w-[65%] h-[70%] rounded-t-[35%] rounded-b-lg"
-          style={{
-            background: `linear-gradient(170deg, ${wrap.color}${Math.round(wrap.opacity * 140).toString(16).padStart(2, '0')}, transparent 80%)`,
-            top: '15%',
-          }}
-        />
-        {/* Left fold crease */}
-        <div
-          className="absolute w-[10%] h-[60%] -rotate-6"
-          style={{
-            background: `linear-gradient(90deg, transparent, ${wrap.color}25, transparent)`,
-            left: '15%',
-            top: '20%',
-          }}
-        />
-        {/* Right fold crease */}
-        <div
-          className="absolute w-[10%] h-[60%] rotate-6"
-          style={{
-            background: `linear-gradient(90deg, transparent, ${wrap.color}25, transparent)`,
-            right: '15%',
-            top: '20%',
-          }}
-        />
-        {/* Bottom gather/tie point */}
-        <div
-          className="absolute w-16 h-8 rounded-full"
-          style={{
-            background: `radial-gradient(ellipse, ${wrap.color}90, transparent)`,
-            bottom: '8%',
-            left: '50%',
-            transform: 'translateX(-50%)',
-          }}
-        />
-      </div>
-
-      {/* Bouquet boundary guide */}
-      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-        <div
-          className="border border-dashed border-primary/10 rounded-[50%]"
-          style={{
-            width: `${BOUNDARY.rx * 200}%`,
-            height: `${BOUNDARY.ry * 200}%`,
-            marginTop: `${(BOUNDARY.cy - 0.5) * 200}%`,
-          }}
-        />
-      </div>
-
-      {/* Grid hint */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.02]"
+      <div
+        ref={containerRef}
+        className="relative shadow-2xl rounded-sm"
         style={{
-          backgroundImage: 'radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)',
-          backgroundSize: '30px 30px',
+          width: '100%',
+          maxWidth: '85vh',
+          aspectRatio: '0.8',
+          background: 'transparent'
         }}
-      />
+      >
+        <div
+          className="absolute inset-0 z-0"
+          onClick={() => onSelectElement(null)}
+        />
+        <BouquetFilters />
 
-      {/* Elements */}
-      {elements.map(el => {
-        const image = getElementImage(el.type, el.dataId);
-        const size = el.scale * (el.type === 'flower' ? 80 : 56);
+        <div
+          className="absolute top-0 left-0 origin-top-left pointer-events-none"
+          style={{
+            width: INTERNAL_WIDTH,
+            height: INTERNAL_HEIGHT,
+            transform: `scale(${scale})`,
+          }}
+        >
+          {/* Back wrap layer */}
+          <BouquetWrap wrap={wrap} width={INTERNAL_WIDTH} height={INTERNAL_HEIGHT} layer="back" />
 
-        return (
-          <div
-            key={el.id}
-            className={`absolute select-none touch-none transition-shadow ${
-              selectedElementId === el.id ? 'ring-2 ring-primary/50 ring-offset-2 rounded-lg' : ''
-            }`}
-            style={{
-              left: el.x - size / 2,
-              top: el.y - size / 2,
-              width: size,
-              height: size,
-              transform: `rotate(${el.rotation}deg)`,
-              zIndex: el.zIndex,
-              opacity: el.opacity,
-              cursor: 'grab',
-              filter: el.type === 'flower'
-                ? 'drop-shadow(0 3px 6px rgba(0,0,0,0.15))'
-                : 'drop-shadow(0 2px 3px rgba(0,0,0,0.1))',
-            }}
-            onPointerDown={e => handlePointerDown(e, el)}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-          >
-            {image ? (
-              <img
-                src={image}
-                alt={el.dataId}
-                className="w-full h-full object-contain pointer-events-none"
-                draggable={false}
-              />
-            ) : (
-              <span style={{ fontSize: `${el.scale * 2}rem` }}>{el.emoji}</span>
-            )}
+          {/* Flowers and stickers */}
+          <div className="absolute inset-0" style={{ zIndex: 10 }}>
+            {sortedElements.map(el => {
+              const stickerSVG = el.type === 'sticker' ? getStickerSVG(el.dataId) : null;
+              const flowerSVG = el.type === 'flower' ? getFlowerSVG(el.dataId, el.color) : null;
+              const fallbackImage = getElementImage(el.type, el.dataId);
+              const size = el.scale * (el.type === 'flower' ? 80 : 56);
+              // Clipping Logic:
+              // If flower is in top half (y < 250) AND not a tall type, clip stem.
+              // Clip bottom 50% of the SVG box.
+              const shouldClip = el.type === 'flower' && el.y < 240 && !NO_CLIP_IDS.includes(el.dataId);
+
+              const isSelected = selectedElementId === el.id;
+
+              return (
+                <div
+                  key={el.id}
+                  className={`absolute select-none touch-none pointer-events-auto ${isSelected ? 'cursor-grabbing' : 'cursor-grab'}`}
+                  style={{
+                    left: el.x - size / 2,
+                    top: el.y - size / 2,
+                    width: size,
+                    height: size,
+                    transform: `rotate(${el.rotation}deg)`,
+                    zIndex: el.zIndex,
+                    opacity: el.opacity,
+                    filter: isSelected
+                      ? 'drop-shadow(0 0 8px rgba(255,105,180,0.8))'
+                      : (el.type === 'flower' ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))'),
+                    cursor: isSelected ? 'grabbing' : 'grab',
+                    touchAction: 'none',
+                    // Apply clipping to hide stems
+                    transition: 'clip-path 0.3s ease',
+                  }}
+                  onPointerDown={e => handlePointerDown(e, el)}
+                  onPointerMove={handlePointerMove}
+                  onPointerUp={handlePointerUp}
+                  onPointerCancel={handlePointerUp}
+                >
+                  {flowerSVG ? (
+                    <div className="w-full h-full flex items-center justify-center pointer-events-none">
+                      {flowerSVG}
+                    </div>
+                  ) : stickerSVG ? (
+                    <div className="w-full h-full flex items-center justify-center pointer-events-none">
+                      {stickerSVG}
+                    </div>
+                  ) : fallbackImage ? (
+                    <img
+                      src={fallbackImage}
+                      alt={el.dataId}
+                      className="w-full h-full object-contain pointer-events-none"
+                      draggable={false}
+                    />
+                  ) : (
+                    <span style={{ fontSize: `${el.scale * 2}rem` }} className="pointer-events-none">{el.emoji}</span>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
 
-      {/* Empty state */}
-      {elements.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="text-center">
-            <p className="text-4xl mb-3 opacity-30">🌸</p>
-            <p className="text-sm text-muted-foreground/40">
-              Pick flowers from the panel to start building
-            </p>
+          {/* Front wrap overlay - masking stems */}
+          <div className="absolute inset-0 pointer-events-none" style={{ zIndex: 20 }}>
+            <BouquetWrap wrap={wrap} width={INTERNAL_WIDTH} height={INTERNAL_HEIGHT} layer="front" />
           </div>
         </div>
-      )}
+
+        {elements.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ zIndex: 30 }}>
+            <div className="text-center bg-background/30 backdrop-blur-sm p-4 rounded-xl border border-white/20">
+              <p className="text-4xl mb-2">🌸</p>
+              <p className="text-sm font-medium text-foreground/70">
+                Drag detailed flowers & doodles here!
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

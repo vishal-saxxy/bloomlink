@@ -4,6 +4,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { decodeBouquet } from "@/lib/bouquet-store";
 import { WRAP_STYLES } from "@/lib/flowers-data";
 import { getElementImage } from "@/lib/flower-assets";
+import { getStickerSVG } from "@/lib/sticker-svgs";
+import { getFlowerSVG } from "@/lib/flower-svgs";
+import { BouquetWrap } from "@/components/bouquet/BouquetWrap";
 import Footer from "@/components/Footer";
 
 const ConfettiPiece = ({ delay, color }: { delay: number; color: string }) => (
@@ -87,7 +90,13 @@ const ViewBouquet = () => {
 
   const wrap = WRAP_STYLES.find(w => w.id === bouquet.wrapId) || WRAP_STYLES[0];
   const confettiColors = ['#FFB6C1', '#FF69B4', '#FFD700', '#DDA0DD', '#87CEEB', '#FFA07A'];
-  const noteDelay = 1.2 + bouquet.elements.length * 0.12;
+
+  // Animation timing: wrap → flowers → stickers → note
+  const flowerElements = bouquet.elements.filter(e => e.type === 'flower');
+  const stickerElements = bouquet.elements.filter(e => e.type === 'sticker');
+  const flowersDone = 0.8 + flowerElements.length * 0.1;
+  const stickersDone = flowersDone + stickerElements.length * 0.08;
+  const noteDelay = stickersDone + 0.5;
 
   return (
     <div className="min-h-screen bg-background sparkle-bg overflow-hidden relative flex flex-col items-center justify-center px-4 py-8">
@@ -121,74 +130,96 @@ const ViewBouquet = () => {
         )}
       </AnimatePresence>
 
-      {/* Bouquet display with unwrap animation */}
+      {/* Bouquet display */}
       <motion.div
         initial={{ scale: 0.7, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         transition={{ delay: 0.2, type: "spring", stiffness: 80, damping: 15 }}
-        className="relative w-80 h-80 md:w-[420px] md:h-[420px] mx-auto z-10"
+        className="relative w-80 h-96 md:w-[420px] md:h-[500px] mx-auto z-10 flex items-center justify-center"
       >
-        {/* Wrap paper */}
+        {/* Wrap paper back layer - animated entrance */}
         <motion.div
-          initial={{ scaleY: 0.5, opacity: 0 }}
-          animate={{ scaleY: 1, opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.8, ease: "easeOut" }}
-          className="absolute inset-0 flex items-center justify-center origin-bottom"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3, duration: 0.6 }}
+          className="absolute inset-0 flex items-center justify-center"
         >
-          <div
-            className="absolute w-[80%] h-[85%] rounded-t-[40%] rounded-b-xl"
-            style={{
-              background: `linear-gradient(180deg, ${wrap.color}${Math.round(wrap.opacity * 200).toString(16).padStart(2, '0')}, ${wrap.color}${Math.round(wrap.opacity * 255).toString(16).padStart(2, '0')})`,
-              boxShadow: `0 12px 40px ${wrap.color}50`,
-              top: '5%',
-            }}
-          />
-          <div
-            className="absolute w-[68%] h-[72%] rounded-t-[35%] rounded-b-lg"
-            style={{
-              background: `linear-gradient(170deg, ${wrap.color}${Math.round(wrap.opacity * 130).toString(16).padStart(2, '0')}, transparent 80%)`,
-              top: '12%',
-            }}
-          />
+          <BouquetWrap wrap={wrap} width={420} height={500} layer="back" />
         </motion.div>
 
-        {/* Elements with rising animation */}
-        {bouquet.elements.map((el, i) => {
-          const image = getElementImage(el.type, el.dataId);
-          const size = el.scale * (el.type === 'flower' ? 80 : 56);
+        {/* Elements with proper layering and animation */}
+        <div className="absolute inset-0" style={{ zIndex: 2 }}>
+          {bouquet.elements.map((el, i) => {
+            const flowerSVG = el.type === 'flower' ? getFlowerSVG(el.dataId, el.color) : null;
+            const stickerSVG = el.type === 'sticker' ? getStickerSVG(el.dataId) : null;
+            const fallbackImage = getElementImage(el.type, el.dataId);
+            const size = el.scale * (el.type === 'flower' ? 80 : 56);
 
-          return (
-            <motion.div
-              key={el.id}
-              initial={{ y: 40, scale: 0, opacity: 0 }}
-              animate={revealed ? { y: 0, scale: 1, opacity: el.opacity } : {}}
-              transition={{
-                delay: 0.5 + i * 0.12,
-                type: "spring",
-                stiffness: 180,
-                damping: 14,
-              }}
-              className="absolute select-none"
-              style={{
-                left: el.x - size / 2,
-                top: el.y - size / 2,
-                width: size,
-                height: size,
-                zIndex: el.zIndex,
-                transform: `rotate(${el.rotation}deg)`,
-                filter: el.type === 'flower'
-                  ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))'
-                  : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
-              }}
-            >
-              {image ? (
-                <img src={image} alt={el.dataId} className="w-full h-full object-contain" draggable={false} />
-              ) : (
-                <span style={{ fontSize: `${el.scale * 2}rem` }}>{el.emoji}</span>
-              )}
-            </motion.div>
-          );
-        })}
+            const isFlower = el.type === 'flower';
+            const flowerIdx = isFlower ? flowerElements.findIndex(e => e.id === el.id) : 0;
+            const stickerIdx = !isFlower ? stickerElements.findIndex(e => e.id === el.id) : 0;
+            const delay = isFlower
+              ? 0.5 + flowerIdx * 0.1
+              : flowersDone + 0.2 + stickerIdx * 0.08;
+
+            return (
+              <motion.div
+                key={el.id}
+                className="absolute select-none"
+                initial={{ y: 60, scale: 0, opacity: 0 }}
+                animate={revealed ? { y: 0, scale: 1, opacity: el.opacity } : {}}
+                transition={{
+                  delay,
+                  type: "spring",
+                  stiffness: 180,
+                  damping: 14,
+                }}
+                style={{
+                  left: el.x - size / 2,
+                  top: el.y - size / 2,
+                  width: size,
+                  height: size,
+                  zIndex: el.zIndex + 10,
+                  transform: `rotate(${el.rotation}deg)`,
+                  filter: isFlower
+                    ? 'drop-shadow(0 5px 10px rgba(0,0,0,0.15))'
+                    : 'drop-shadow(0 2px 5px rgba(0,0,0,0.1))',
+                  background: 'transparent',
+                }}
+              >
+                {flowerSVG ? (
+                  <div className="w-full h-full flex items-center justify-center pointer-events-none">
+                    {flowerSVG}
+                  </div>
+                ) : stickerSVG ? (
+                  <div className="w-full h-full flex items-center justify-center pointer-events-none">
+                    {stickerSVG}
+                  </div>
+                ) : fallbackImage ? (
+                  <img
+                    src={fallbackImage}
+                    alt={el.dataId}
+                    className="w-full h-full object-contain pointer-events-none"
+                    draggable={false}
+                  />
+                ) : (
+                  <span style={{ fontSize: `${el.scale * 2}rem` }} className="select-none">{el.emoji}</span>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Front wrap overlay - covers stems */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3, duration: 0.6 }}
+          className="absolute inset-0 flex items-center justify-center"
+          style={{ zIndex: 5 }}
+        >
+          <BouquetWrap wrap={wrap} width={420} height={500} layer="front" />
+        </motion.div>
       </motion.div>
 
       {/* Note with typewriter */}

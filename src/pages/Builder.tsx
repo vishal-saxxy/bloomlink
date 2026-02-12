@@ -8,7 +8,7 @@ import { NoteEditor } from "@/components/bouquet/NoteEditor";
 import { WrapSelector } from "@/components/bouquet/WrapSelector";
 import { BouquetConfig, PlacedElement, createEmptyBouquet, encodeBouquet } from "@/lib/bouquet-store";
 import { FLOWERS, STICKERS } from "@/lib/flowers-data";
-import { getStickerImage } from "@/lib/flower-assets";
+import { getStickerSVG } from "@/lib/sticker-svgs";
 import Footer from "@/components/Footer";
 
 type Tab = 'flowers' | 'stickers' | 'wrap' | 'note';
@@ -33,10 +33,13 @@ const Builder = () => {
       id: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type,
       dataId,
-      x: 150 + Math.random() * 100,
-      y: 150 + Math.random() * 100,
-      scale: type === 'flower' ? 1.5 : 1,
-      rotation: type === 'flower' ? (Math.random() - 0.5) * 30 : 0,
+      // Internal Canvas is 400x500. Center is 200, 250.
+      // Wider spread for fuller look, but centered
+      x: 200 + (Math.random() - 0.5) * 140, // Range 130-270
+      y: 200 + (Math.random() - 0.5) * 100, // Range 150-250
+      scale: type === 'flower' ? 1.2 + (Math.random() - 0.5) * 0.3 : 1.0, // Scale 1.05 - 1.35
+      // Head-only flowers: Random rotation for natural variation
+      rotation: (Math.random() - 0.5) * 60,
       color: 'emoji' in source && type === 'flower' ? (source as any).defaultColor || '' : '',
       emoji: source.emoji,
       zIndex: nextZIndex.current++,
@@ -94,9 +97,9 @@ const Builder = () => {
         </motion.button>
       </header>
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Canvas */}
-        <div className="flex-1 relative order-1 min-h-[45vh] md:min-h-0">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        {/* Canvas Area */}
+        <div className="flex-1 relative order-1 min-h-[40vh] md:min-h-0 bg-secondary/5 flex flex-col">
           <BouquetCanvas
             elements={bouquet.elements}
             wrapId={bouquet.wrapId}
@@ -105,40 +108,62 @@ const Builder = () => {
             onUpdateElement={updateElement}
             onDeleteElement={deleteElement}
           />
-
-          {/* Element customization floating panel */}
-          <AnimatePresence>
-            {selectedElement && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="absolute bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-20"
-              >
-                <CustomizationPanel
-                  element={selectedElement}
-                  onUpdate={(updates) => updateElement(selectedElement.id, updates)}
-                  onDelete={() => deleteElement(selectedElement.id)}
-                  onDeselect={() => setSelectedElementId(null)}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
         </div>
 
-        {/* Sidebar / Bottom panel on mobile */}
-        <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-border/30 bg-card/30 flex flex-col order-2 max-h-[45vh] md:max-h-none">
+        {/* Edit Panel (Independent Column/Row) */}
+        <AnimatePresence mode="popLayout">
+          {selectedElement && (
+            <>
+              {/* Desktop: Vertical Column (Width Animation) */}
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 320, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                className="hidden md:flex flex-col border-l border-border/30 bg-card/95 backdrop-blur-md h-full z-20 shadow-xl overflow-hidden order-2 relative"
+              >
+                <div className="flex-1 overflow-y-auto w-[320px]"> {/* Fixed width inner to prevent layout shift during anim */}
+                  <CustomizationPanel
+                    element={selectedElement}
+                    onUpdate={(updates) => updateElement(selectedElement.id, updates)}
+                    onDelete={() => deleteElement(selectedElement.id)}
+                    onDeselect={() => setSelectedElementId(null)}
+                  />
+                </div>
+              </motion.div>
+
+              {/* Mobile: Horizontal Block (Height Animation) */}
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="md:hidden w-full border-t border-b border-border/30 bg-card/95 backdrop-blur-md z-20 shadow-xl overflow-hidden order-2"
+              >
+                <div className="p-2">
+                  <CustomizationPanel
+                    element={selectedElement}
+                    onUpdate={(updates) => updateElement(selectedElement.id, updates)}
+                    onDelete={() => deleteElement(selectedElement.id)}
+                    onDeselect={() => setSelectedElementId(null)}
+                  />
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        {/* Library Sidebar */}
+        <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-border/30 bg-card/40 flex flex-col order-3 max-h-[50vh] md:max-h-none h-full z-10">
           {/* Tabs */}
-          <div className="flex border-b border-border/30 shrink-0">
+          <div className="flex border-b border-border/30 shrink-0 bg-background/60 backdrop-blur-sm">
             {tabs.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 py-2.5 md:py-3 text-xs font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'text-foreground border-b-2 border-primary'
-                    : 'text-muted-foreground'
-                }`}
+                className={`flex-1 py-2.5 md:py-3 text-xs font-medium transition-colors ${activeTab === tab.id
+                  ? 'text-foreground border-b-2 border-primary'
+                  : 'text-muted-foreground'
+                  }`}
               >
                 <span className="block text-base mb-0.5">{tab.icon}</span>
                 {tab.label}
@@ -161,16 +186,16 @@ const Builder = () => {
                 <motion.div key="stickers" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                   <div className="grid grid-cols-4 md:grid-cols-5 gap-2">
                     {STICKERS.map(s => {
-                      const img = getStickerImage(s.id);
+                      const svg = getStickerSVG(s.id);
                       return (
                         <button
                           key={s.id}
                           onClick={() => addElement('sticker', s.id)}
-                          className="aspect-square rounded-xl bg-secondary/50 hover:bg-secondary flex items-center justify-center transition-colors hover:scale-110"
+                          className="aspect-square rounded-xl hover:bg-secondary/40 flex items-center justify-center transition-colors hover:scale-110"
                           title={s.name}
                         >
-                          {img ? (
-                            <img src={img} alt={s.name} className="w-8 h-8 object-contain" loading="lazy" />
+                          {svg ? (
+                            <div className="w-10 h-10 flex items-center justify-center">{svg}</div>
                           ) : (
                             <span className="text-2xl">{s.emoji}</span>
                           )}
