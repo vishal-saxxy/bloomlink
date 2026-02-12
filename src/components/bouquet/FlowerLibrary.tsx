@@ -1,4 +1,5 @@
 import { FLOWERS, type FlowerData } from "@/lib/flowers-data";
+import { getFlowerImage } from "@/lib/flower-assets";
 
 interface FlowerLibraryProps {
   searchQuery: string;
@@ -27,16 +28,28 @@ export const FlowerLibrary = ({ searchQuery, onSearchChange, onSelect }: FlowerL
         className="w-full px-3 py-2 rounded-xl bg-secondary/50 border border-border/50 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 mb-3"
       />
       <div className="grid grid-cols-3 gap-2">
-        {filtered.map(flower => (
-          <button
-            key={flower.id}
-            onClick={() => onSelect(flower.id)}
-            className="flex flex-col items-center gap-1 p-2 rounded-xl bg-secondary/30 hover:bg-secondary transition-colors group"
-          >
-            <span className="text-3xl group-hover:scale-110 transition-transform">{flower.emoji}</span>
-            <span className="text-[10px] text-muted-foreground leading-tight text-center">{flower.name}</span>
-          </button>
-        ))}
+        {filtered.map(flower => {
+          const image = getFlowerImage(flower.id);
+          return (
+            <button
+              key={flower.id}
+              onClick={() => onSelect(flower.id)}
+              className="flex flex-col items-center gap-1 p-2 rounded-xl bg-secondary/30 hover:bg-secondary transition-colors group"
+            >
+              {image ? (
+                <img
+                  src={image}
+                  alt={flower.name}
+                  className="w-12 h-12 object-contain group-hover:scale-110 transition-transform"
+                  loading="lazy"
+                />
+              ) : (
+                <span className="text-3xl group-hover:scale-110 transition-transform">{flower.emoji}</span>
+              )}
+              <span className="text-[10px] text-muted-foreground leading-tight text-center">{flower.name}</span>
+            </button>
+          );
+        })}
       </div>
       {filtered.length === 0 && (
         <p className="text-center text-sm text-muted-foreground/50 py-8">No flowers found 🥀</p>

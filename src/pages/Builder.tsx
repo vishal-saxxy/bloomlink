@@ -8,6 +8,8 @@ import { NoteEditor } from "@/components/bouquet/NoteEditor";
 import { WrapSelector } from "@/components/bouquet/WrapSelector";
 import { BouquetConfig, PlacedElement, createEmptyBouquet, encodeBouquet } from "@/lib/bouquet-store";
 import { FLOWERS, STICKERS } from "@/lib/flowers-data";
+import { getStickerImage } from "@/lib/flower-assets";
+import Footer from "@/components/Footer";
 
 type Tab = 'flowers' | 'stickers' | 'wrap' | 'note';
 
@@ -76,7 +78,7 @@ const Builder = () => {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
-      <header className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-card/50 backdrop-blur-sm">
+      <header className="flex items-center justify-between px-4 py-3 border-b border-border/50 bg-card/50 backdrop-blur-sm shrink-0">
         <button onClick={() => navigate("/")} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
           ← Back
         </button>
@@ -88,20 +90,51 @@ const Builder = () => {
           disabled={bouquet.elements.length === 0}
           className="glow-button text-sm px-4 py-2 disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          Generate Link ✨
+          Generate ✨
         </motion.button>
       </header>
 
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        {/* Sidebar */}
-        <div className="w-full md:w-80 border-r border-border/30 bg-card/30 flex flex-col order-2 md:order-1 max-h-[40vh] md:max-h-none">
+        {/* Canvas */}
+        <div className="flex-1 relative order-1 min-h-[45vh] md:min-h-0">
+          <BouquetCanvas
+            elements={bouquet.elements}
+            wrapId={bouquet.wrapId}
+            selectedElementId={selectedElementId}
+            onSelectElement={setSelectedElementId}
+            onUpdateElement={updateElement}
+            onDeleteElement={deleteElement}
+          />
+
+          {/* Element customization floating panel */}
+          <AnimatePresence>
+            {selectedElement && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 10 }}
+                className="absolute bottom-16 md:bottom-4 left-1/2 -translate-x-1/2 z-20"
+              >
+                <CustomizationPanel
+                  element={selectedElement}
+                  onUpdate={(updates) => updateElement(selectedElement.id, updates)}
+                  onDelete={() => deleteElement(selectedElement.id)}
+                  onDeselect={() => setSelectedElementId(null)}
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Sidebar / Bottom panel on mobile */}
+        <div className="w-full md:w-80 border-t md:border-t-0 md:border-l border-border/30 bg-card/30 flex flex-col order-2 max-h-[45vh] md:max-h-none">
           {/* Tabs */}
-          <div className="flex border-b border-border/30">
+          <div className="flex border-b border-border/30 shrink-0">
             {tabs.map(tab => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex-1 py-3 text-xs font-medium transition-colors ${
+                className={`flex-1 py-2.5 md:py-3 text-xs font-medium transition-colors ${
                   activeTab === tab.id
                     ? 'text-foreground border-b-2 border-primary'
                     : 'text-muted-foreground'
@@ -126,17 +159,24 @@ const Builder = () => {
               )}
               {activeTab === 'stickers' && (
                 <motion.div key="stickers" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <div className="grid grid-cols-5 gap-2">
-                    {STICKERS.map(s => (
-                      <button
-                        key={s.id}
-                        onClick={() => addElement('sticker', s.id)}
-                        className="aspect-square rounded-xl bg-secondary/50 hover:bg-secondary flex items-center justify-center text-2xl transition-colors hover:scale-110"
-                        title={s.name}
-                      >
-                        {s.emoji}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-4 md:grid-cols-5 gap-2">
+                    {STICKERS.map(s => {
+                      const img = getStickerImage(s.id);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => addElement('sticker', s.id)}
+                          className="aspect-square rounded-xl bg-secondary/50 hover:bg-secondary flex items-center justify-center transition-colors hover:scale-110"
+                          title={s.name}
+                        >
+                          {img ? (
+                            <img src={img} alt={s.name} className="w-8 h-8 object-contain" loading="lazy" />
+                          ) : (
+                            <span className="text-2xl">{s.emoji}</span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </motion.div>
               )}
@@ -161,37 +201,8 @@ const Builder = () => {
               )}
             </AnimatePresence>
           </div>
-        </div>
 
-        {/* Canvas */}
-        <div className="flex-1 relative order-1 md:order-2 min-h-[50vh]">
-          <BouquetCanvas
-            elements={bouquet.elements}
-            wrapId={bouquet.wrapId}
-            selectedElementId={selectedElementId}
-            onSelectElement={setSelectedElementId}
-            onUpdateElement={updateElement}
-            onDeleteElement={deleteElement}
-          />
-
-          {/* Element customization floating panel */}
-          <AnimatePresence>
-            {selectedElement && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="absolute bottom-4 left-1/2 -translate-x-1/2"
-              >
-                <CustomizationPanel
-                  element={selectedElement}
-                  onUpdate={(updates) => updateElement(selectedElement.id, updates)}
-                  onDelete={() => deleteElement(selectedElement.id)}
-                  onDeselect={() => setSelectedElementId(null)}
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <Footer />
         </div>
       </div>
     </div>
