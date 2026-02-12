@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import heroBouquet from "@/assets/hero-bouquet.jpg";
+import Footer from "@/components/Footer";
 
 const FloatingPetal = ({ delay, left, size }: { delay: number; left: string; size: number }) => (
   <motion.div
@@ -26,18 +27,13 @@ const Index = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-background sparkle-bg overflow-hidden relative">
+    <div className="min-h-screen bg-background sparkle-bg overflow-hidden relative flex flex-col">
       {/* Floating petals */}
       {[...Array(8)].map((_, i) => (
-        <FloatingPetal
-          key={i}
-          delay={i * 0.8}
-          left={`${10 + i * 11}%`}
-          size={16 + Math.random() * 12}
-        />
+        <FloatingPetal key={i} delay={i * 0.8} left={`${10 + i * 11}%`} size={16 + Math.random() * 12} />
       ))}
 
-      <div className="relative z-10 min-h-screen flex flex-col items-center justify-center px-4">
+      <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4">
         {/* Hero Image */}
         <motion.div
           initial={{ scale: 0.8, opacity: 0 }}
@@ -118,6 +114,8 @@ const Index = () => {
           No sign up needed · 100% free · Share instantly
         </motion.p>
       </div>
+
+      <Footer />
     </div>
   );
 };

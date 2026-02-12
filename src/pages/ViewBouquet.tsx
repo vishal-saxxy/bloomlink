@@ -1,8 +1,10 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { decodeBouquet, BouquetConfig } from "@/lib/bouquet-store";
+import { decodeBouquet } from "@/lib/bouquet-store";
 import { WRAP_STYLES } from "@/lib/flowers-data";
+import { getElementImage } from "@/lib/flower-assets";
+import Footer from "@/components/Footer";
 
 const ConfettiPiece = ({ delay, color }: { delay: number; color: string }) => (
   <motion.div
@@ -20,17 +22,36 @@ const ConfettiPiece = ({ delay, color }: { delay: number; color: string }) => (
     }}
     transition={{
       duration: 3 + Math.random() * 2,
-      delay: delay,
+      delay,
       ease: "easeIn",
     }}
   />
 );
 
+const TypewriterText = ({ text, style, delay }: { text: string; style: React.CSSProperties; delay: number }) => {
+  const [displayed, setDisplayed] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      let i = 0;
+      const interval = setInterval(() => {
+        setDisplayed(text.slice(0, i + 1));
+        i++;
+        if (i >= text.length) clearInterval(interval);
+      }, 40);
+      return () => clearInterval(interval);
+    }, delay * 1000);
+    return () => clearTimeout(timer);
+  }, [text, delay]);
+
+  return <p style={style}>{displayed}<span className="animate-pulse">|</span></p>;
+};
+
 const ViewBouquet = () => {
   const { encoded } = useParams<{ encoded: string }>();
   const navigate = useNavigate();
-  const [phase, setPhase] = useState<'reveal' | 'shown'>('reveal');
   const [showConfetti, setShowConfetti] = useState(true);
+  const [revealed, setRevealed] = useState(false);
 
   const bouquet = useMemo(() => {
     if (!encoded) return null;
@@ -38,10 +59,17 @@ const ViewBouquet = () => {
   }, [encoded]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setPhase('shown'), 800);
-    const confettiTimer = setTimeout(() => setShowConfetti(false), 5000);
-    return () => { clearTimeout(timer); clearTimeout(confettiTimer); };
+    const t1 = setTimeout(() => setRevealed(true), 600);
+    const t2 = setTimeout(() => setShowConfetti(false), 5000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
+
+  const handleReplay = () => {
+    setRevealed(false);
+    setShowConfetti(true);
+    setTimeout(() => setRevealed(true), 600);
+    setTimeout(() => setShowConfetti(false), 5000);
+  };
 
   if (!bouquet) {
     return (
@@ -59,102 +87,127 @@ const ViewBouquet = () => {
 
   const wrap = WRAP_STYLES.find(w => w.id === bouquet.wrapId) || WRAP_STYLES[0];
   const confettiColors = ['#FFB6C1', '#FF69B4', '#FFD700', '#DDA0DD', '#87CEEB', '#FFA07A'];
+  const noteDelay = 1.2 + bouquet.elements.length * 0.12;
 
   return (
-    <div className="min-h-screen bg-background sparkle-bg overflow-hidden relative flex flex-col items-center justify-center px-4">
+    <div className="min-h-screen bg-background sparkle-bg overflow-hidden relative flex flex-col items-center justify-center px-4 py-8">
       {/* Confetti */}
       {showConfetti && [...Array(30)].map((_, i) => (
-        <ConfettiPiece
-          key={i}
-          delay={i * 0.1}
-          color={confettiColors[i % confettiColors.length]}
-        />
+        <ConfettiPiece key={i} delay={i * 0.1} color={confettiColors[i % confettiColors.length]} />
       ))}
+
+      {/* Ambient glow */}
+      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+        <div
+          className="w-[500px] h-[500px] rounded-full blur-3xl opacity-20"
+          style={{ background: `radial-gradient(circle, ${wrap.color}, transparent)` }}
+        />
+      </div>
 
       {/* Recipient name */}
       <AnimatePresence>
         {bouquet.recipientName && (
-          <motion.p
+          <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="text-sm text-muted-foreground mb-2"
+            className="text-center mb-6 relative z-10"
           >
-            A bouquet for
-          </motion.p>
+            <p className="text-sm text-muted-foreground mb-1">A bouquet for</p>
+            <h1 className="text-3xl md:text-4xl font-display text-gradient-pink">
+              {bouquet.recipientName}
+            </h1>
+          </motion.div>
         )}
       </AnimatePresence>
 
-      {bouquet.recipientName && (
-        <motion.h1
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.5, type: "spring" }}
-          className="text-3xl md:text-4xl font-display text-gradient-pink mb-8"
-        >
-          {bouquet.recipientName}
-        </motion.h1>
-      )}
-
-      {/* Bouquet display */}
+      {/* Bouquet display with unwrap animation */}
       <motion.div
-        initial={{ scale: 0, opacity: 0 }}
+        initial={{ scale: 0.7, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        transition={{ delay: 0.2, type: "spring", stiffness: 100, damping: 15 }}
-        className="relative w-80 h-80 md:w-[400px] md:h-[400px] mx-auto"
+        transition={{ delay: 0.2, type: "spring", stiffness: 80, damping: 15 }}
+        className="relative w-80 h-80 md:w-[420px] md:h-[420px] mx-auto z-10"
       >
-        {/* Wrap background */}
-        <div
-          className="absolute inset-0 rounded-3xl"
-          style={{
-            background: `radial-gradient(ellipse at center, ${wrap.color}${Math.round(wrap.opacity * 255).toString(16).padStart(2, '0')}, transparent 70%)`,
-          }}
-        />
-
-        {/* Elements */}
-        {bouquet.elements.map((el, i) => (
-          <motion.div
-            key={el.id}
-            initial={{ scale: 0, opacity: 0, rotate: -20 }}
-            animate={{ scale: 1, opacity: el.opacity, rotate: el.rotation }}
-            transition={{
-              delay: 0.5 + i * 0.15,
-              type: "spring",
-              stiffness: 200,
-              damping: 12,
-            }}
-            className="absolute select-none"
+        {/* Wrap paper */}
+        <motion.div
+          initial={{ scaleY: 0.5, opacity: 0 }}
+          animate={{ scaleY: 1, opacity: 1 }}
+          transition={{ delay: 0.1, duration: 0.8, ease: "easeOut" }}
+          className="absolute inset-0 flex items-center justify-center origin-bottom"
+        >
+          <div
+            className="absolute w-[80%] h-[85%] rounded-t-[40%] rounded-b-xl"
             style={{
-              left: el.x,
-              top: el.y,
-              fontSize: `${el.scale * 2}rem`,
-              zIndex: el.zIndex,
-              transform: `rotate(${el.rotation}deg)`,
-              filter: el.type === 'flower' ? `drop-shadow(0 2px 4px rgba(0,0,0,0.1))` : undefined,
+              background: `linear-gradient(180deg, ${wrap.color}${Math.round(wrap.opacity * 200).toString(16).padStart(2, '0')}, ${wrap.color}${Math.round(wrap.opacity * 255).toString(16).padStart(2, '0')})`,
+              boxShadow: `0 12px 40px ${wrap.color}50`,
+              top: '5%',
             }}
-          >
-            {el.emoji}
-          </motion.div>
-        ))}
+          />
+          <div
+            className="absolute w-[68%] h-[72%] rounded-t-[35%] rounded-b-lg"
+            style={{
+              background: `linear-gradient(170deg, ${wrap.color}${Math.round(wrap.opacity * 130).toString(16).padStart(2, '0')}, transparent 80%)`,
+              top: '12%',
+            }}
+          />
+        </motion.div>
+
+        {/* Elements with rising animation */}
+        {bouquet.elements.map((el, i) => {
+          const image = getElementImage(el.type, el.dataId);
+          const size = el.scale * (el.type === 'flower' ? 80 : 56);
+
+          return (
+            <motion.div
+              key={el.id}
+              initial={{ y: 40, scale: 0, opacity: 0 }}
+              animate={revealed ? { y: 0, scale: 1, opacity: el.opacity } : {}}
+              transition={{
+                delay: 0.5 + i * 0.12,
+                type: "spring",
+                stiffness: 180,
+                damping: 14,
+              }}
+              className="absolute select-none"
+              style={{
+                left: el.x - size / 2,
+                top: el.y - size / 2,
+                width: size,
+                height: size,
+                zIndex: el.zIndex,
+                transform: `rotate(${el.rotation}deg)`,
+                filter: el.type === 'flower'
+                  ? 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))'
+                  : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))',
+              }}
+            >
+              {image ? (
+                <img src={image} alt={el.dataId} className="w-full h-full object-contain" draggable={false} />
+              ) : (
+                <span style={{ fontSize: `${el.scale * 2}rem` }}>{el.emoji}</span>
+              )}
+            </motion.div>
+          );
+        })}
       </motion.div>
 
-      {/* Note */}
+      {/* Note with typewriter */}
       {bouquet.note && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 1 + bouquet.elements.length * 0.15 }}
-          className="mt-8 glass-panel px-6 py-4 max-w-sm text-center"
+          transition={{ delay: noteDelay }}
+          className="mt-8 glass-panel px-6 py-4 max-w-sm text-center relative z-10"
         >
-          <p
+          <TypewriterText
+            text={bouquet.note}
+            delay={noteDelay + 0.3}
             style={{
               fontFamily: bouquet.noteFont,
               color: bouquet.noteColor,
               fontSize: bouquet.noteFont.includes('Caveat') ? '1.25rem' : '1rem',
             }}
-          >
-            {bouquet.note}
-          </p>
+          />
         </motion.div>
       )}
 
@@ -162,17 +215,17 @@ const ViewBouquet = () => {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 2 }}
-        className="mt-8 flex gap-3 flex-wrap justify-center"
+        transition={{ delay: noteDelay + 1 }}
+        className="mt-8 flex gap-3 flex-wrap justify-center relative z-10"
       >
         <button
-          onClick={() => { setPhase('reveal'); setShowConfetti(true); setTimeout(() => setPhase('shown'), 800); setTimeout(() => setShowConfetti(false), 5000); }}
+          onClick={handleReplay}
           className="px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
         >
           🔄 Replay
         </button>
         <button
-          onClick={() => { navigator.clipboard.writeText(window.location.href); }}
+          onClick={() => navigator.clipboard.writeText(window.location.href)}
           className="px-4 py-2 rounded-full bg-secondary text-secondary-foreground text-sm font-medium hover:bg-secondary/80 transition-colors"
         >
           📋 Copy Link
@@ -185,14 +238,7 @@ const ViewBouquet = () => {
         </button>
       </motion.div>
 
-      <motion.p
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2.5 }}
-        className="mt-6 text-xs text-muted-foreground/40"
-      >
-        Made with bloomlink 💕
-      </motion.p>
+      <Footer />
     </div>
   );
 };

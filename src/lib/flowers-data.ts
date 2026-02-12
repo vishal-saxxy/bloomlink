@@ -20,7 +20,7 @@ export interface WrapStyle {
   name: string;
   color: string;
   opacity: number;
-  style: 'korean' | 'minimal' | 'vintage' | 'luxury' | 'transparent';
+  style: 'korean' | 'minimal' | 'vintage' | 'luxury' | 'transparent' | 'pastel-satin' | 'newspaper' | 'black-luxury';
 }
 
 export const FLOWERS: FlowerData[] = [
@@ -67,6 +67,9 @@ export const WRAP_STYLES: WrapStyle[] = [
   { id: 'vintage', name: 'Vintage Layered', color: '#FAEBD7', opacity: 0.8, style: 'vintage' },
   { id: 'luxury', name: 'Luxury Satin', color: '#F5E6CC', opacity: 0.85, style: 'luxury' },
   { id: 'transparent', name: 'Transparent', color: '#FFFFFF', opacity: 0.3, style: 'transparent' },
+  { id: 'pastel-satin', name: 'Pastel Satin', color: '#E8D5E0', opacity: 0.75, style: 'pastel-satin' },
+  { id: 'newspaper', name: 'Vintage Paper', color: '#E8DCC8', opacity: 0.85, style: 'newspaper' },
+  { id: 'black-luxury', name: 'Black Luxury', color: '#2D2D2D', opacity: 0.9, style: 'black-luxury' },
 ];
 
 export const NOTE_FONTS = [
